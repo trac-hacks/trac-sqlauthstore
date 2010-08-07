@@ -12,7 +12,7 @@ class SQLAuthStore(Component):
 
 	hash_method = ExtensionOption('account-manager', 'hash_method', IPasswordHashMethod, 'HtPasswdHashMethod')
 
-	auth_table = Option('account-manager', 'sql_auth_table', None,
+	sql_auth_table = Option('account-manager', 'sql_auth_table', None,
 		"""Name of the SQL table with authentication data. Trac should have access to it.""")
 
 	implements(IPasswordStore)
@@ -24,14 +24,15 @@ class SQLAuthStore(Component):
 		Returns an iterable of the known usernames.
 		"""
 
-		if not self.auth_table:
+		if not self.sql_auth_table:
 			self.log.debug("sqlauthstore: 'sql_auth_table' configuration option is required")
 			return
 
 		db = self.env.get_db_cnx()
 		cursor = db.cursor()
-		
-		cursor.execute("SELECT DISTINCT username FROM %s ORDER BY username" % self.auth_table)
+	
+		self.log.debug("sqlauthstore: get_users: SELECT DISTINCT username FROM %s ORDER BY username" % (self.sql_auth_table,))
+		cursor.execute("SELECT DISTINCT username FROM %s ORDER BY username" % self.sql_auth_table)
 
 		for username, in cursor:
 			yield username
@@ -41,14 +42,15 @@ class SQLAuthStore(Component):
 		Returns whether the user account exists.
 		"""
 
-		if not self.auth_table:
+		if not self.sql_auth_table:
 			self.log.debug("sqlauthstore: 'sql_auth_table' configuration option is required")
 			return False
 
 		db = self.env.get_db_cnx()
 		cursor = db.cursor()
 
-		cursor.execute("SELECT username FROM %s WHERE username=%%s" % self.auth_table, (user,))
+		self.log.debug("sqlauthstore: has_user: SELECT username FROM %s WHERE username='%s'" % (self.sql_auth_table, user))
+		cursor.execute("SELECT username FROM %s WHERE username=%%s" % self.sql_auth_table, (user,))
 
 		for row in cursor:
 			return True
@@ -70,16 +72,18 @@ class SQLAuthStore(Component):
 		chain.
 		"""
 
-		if not self.auth_table:
+		if not self.sql_auth_table:
 			self.log.debug("sqlauthstore: 'sql_auth_table' configuration option is required")
 			return None
 
 		db = self.env.get_db_cnx()
 		cursor = db.cursor()
 
-		cursor.execute("SELECT password FROM %s WHERE username=%%s" % self.auth_table, (user,))
+		self.log.debug("sqlauthstore: check_password: SELECT password FROM %s WHERE username='%s'" % (self.sql_auth_table, user))
+		cursor.execute("SELECT password FROM %s WHERE username=%%s" % self.sql_auth_table, (user,))
 
 		for hash, in cursor:
+			self.log.debug("sqlauthstore: check_password: retrieved hash from the database")
 			return self.hash_method.check_hash(user, password, hash)
 		return None
 
@@ -100,14 +104,15 @@ class SQLAuthStore(Component):
 		name is a member of.
 		"""
 
-		if not self.auth_table:
+		if not self.sql_auth_table:
 			self.log.debug("sqlauthstore: 'sql_auth_table' configuration option is required")
 			return []
 
 		db = self.env.get_db_cnx()
 		cursor = db.cursor()
-
-		cursor.execute("SELECT admin FROM %s WHERE username=%%s" % self.auth_table, (username,))
+		
+		self.log.debug("sqlauthstore: get_permission_groups: SELECT admin FROM %s WHERE username='%s'" % (self.sql_auth_table, username))
+		cursor.execute("SELECT admin FROM %s WHERE username=%%s" % self.sql_auth_table, (username,))
 
 		for admin, in cursor:
 			if int(admin):
