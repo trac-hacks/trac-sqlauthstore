@@ -15,7 +15,7 @@ class SQLAuthStore(Component):
 	sql_auth_table = Option('account-manager', 'sql_auth_table', None,
 		"""Name of the SQL table with authentication data. Trac should have access to it.""")
 
-	implements(IPasswordStore)
+	implements(IPasswordStore, IPermissionGroupProvider)
 
 	# IPasswordStore methods
 
@@ -115,6 +115,7 @@ class SQLAuthStore(Component):
 		cursor.execute("SELECT admin FROM %s WHERE username=%%s" % self.sql_auth_table, (username,))
 
 		for admin, in cursor:
+			self.log.debug("sqlauthstore: sql_auth_table: retrieved admin flag from the database")
 			if int(admin):
 				return ['admins', 'users']
 			else:
