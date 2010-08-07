@@ -8,10 +8,10 @@ setup(
 	version = VERSION,
 	description = "SQL password store for Trac's AccountManager.",
 	author = 'Mitar',
-	author_email = 'mitar@tnode.com',
+	author_email = 'mitar.trac@tnode.com',
 	url = 'http://mitar.tnode.com/',
 	keywords = 'trac plugin',
-	license = "GPL",
+	license = 'GPLv3',
 	packages = [PACKAGE],
 	include_package_data = True,
 	install_requires = [
