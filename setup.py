@@ -6,7 +6,7 @@ PACKAGE = 'sqlauthstore'
 setup(
 	name = 'SQLAuthStorePlugin',
 	version = VERSION,
-	description = "SQL password store for Trac's AccountManager",
+	description = "SQL password store for Trac's AccountManager.",
 	author = 'Mitar',
 	author_email = 'mitar@tnode.com',
 	url = 'http://mitar.tnode.com/',
