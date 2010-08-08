@@ -1,6 +1,9 @@
-from trac.config import Option, ExtensionOption
+from trac.config import Option, BoolOption, ExtensionOption
 from trac.core import *
 from trac.perm import IPermissionGroupProvider
+from trac.web.api import ITemplateStreamFilter
+
+from genshi.filters.transform import Transformer
 
 from acct_mgr.api import IPasswordStore
 from acct_mgr.pwhash import IPasswordHashMethod
@@ -14,8 +17,10 @@ class SQLAuthStore(Component):
 
 	sql_auth_table = Option('account-manager', 'sql_auth_table', None,
 		"""Name of the SQL table with authentication data. Trac should have access to it.""")
+	sql_read_only = BoolOption('account-manager', 'sql_read_only', True,
+		"""Is SQL table with authentication data read-only?""")
 
-	implements(IPasswordStore, IPermissionGroupProvider)
+	implements(IPasswordStore, IPermissionGroupProvider, ITemplateStreamFilter)
 
 	# IPasswordStore methods
 
@@ -56,8 +61,40 @@ class SQLAuthStore(Component):
 			return True
 		return False
 
-	# Setting password or creating users not supported.
-	#def set_password(self, user, password):
+	def set_password(self, user, password):
+		"""
+		Sets the password for the user. This should create the user account
+		if it doesn't already exist.
+
+		Returns True if a new account was created, False if an existing account
+		was updated.
+		"""
+
+		if not self.sql_auth_table:
+			self.log.debug("sqlauthstore: 'sql_auth_table' configuration option is required")
+			return False
+
+		hash = self.hash_method.generate_hash(user, password)
+		db = self.env.get_db_cnx()
+		cursor = db.cursor()
+
+		self.log.debug("sqlauthstore: set_password: UPDATE %s SET password='%s' WHERE username='%s'" % (self.sql_auth_table, hash, user))
+		cursor.execute("UPDATE %s SET password=%%s WHERE username=%%s" % self.sql_auth_table, (hash, user))
+
+		if cursor.rowcount > 0:
+			db.commit()
+			return False
+		
+		self.log.debug("sqlauthstore: set_password: INSERT INTO %s (username, password) VALUES ('%s', '%s')" % (self.sql_auth_table, user, hash))
+		cursor.execute("INSERT INTO %s (username, password) VALUES (%%s, %%s)" % self.sql_auth_table, (user, hash))
+
+		db.commit()
+		return True
+
+	def __getattribute__(self, name):
+		if name == 'set_password' and self.sql_read_only:
+			raise AttributeError
+		return super(SQLAuthStore, self).__getattribute__(name)
 
 	def check_password(self, user, password):
 		"""
@@ -94,7 +131,24 @@ class SQLAuthStore(Component):
 		Returns True if the account existed and was deleted, False otherwise.
 		"""
 
-		raise TracError("Deleting users not supported.")
+		if self.sql_read_only:
+			return False
+
+		if not self.sql_auth_table:
+			self.log.debug("sqlauthstore: 'sql_auth_table' configuration option is required")
+			return False
+
+		if not self.has_user(user):
+			return False
+
+		db = self.env.get_db_cnx()
+		cursor = db.cursor()
+
+		self.log.debug("sqlauthstore: delete_user: DELETE FROM %s WHERE username='%s'" % (self.sql_auth_table, user))
+		cursor.execute("DELETE FROM %s WHERE username=%%s" % self.sql_auth_table, (user,))
+
+		db.commit()
+		return True
 
 	# IPermissionGroupProvider methods
 
@@ -121,3 +175,20 @@ class SQLAuthStore(Component):
 			else:
 				return ['users']
 		return []
+
+	# ITemplateStreamFilter methods
+
+	def filter_stream(self, req, method, filename, stream, data):
+		"""
+		Returns changed stream for `admin_users.html` template to change how
+		account deletion is described if SQL table is read-only.
+
+		`req` is the current request object, `method` is the Genshi render
+		method (xml, xhtml or text), `filename` is the filename of the template
+		to be rendered, `stream` is the event stream and `data` is the data for
+		the current template.
+		"""
+		
+		if self.sql_read_only and filename == 'admin_users.html':
+			stream |= Transformer(".//input[@name='remove']").attr('value', 'Remove session and permissions data for selected accounts')
+		return stream
